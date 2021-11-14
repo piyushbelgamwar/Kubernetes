@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;deployment.yaml&apos; to &apos;currency-conversion-service&apos;&#x0D;&#x0A;- Original project: &apos;currency-exchange-service&apos;&#x0D;&#x0A;- Destination element: &apos;currency-conversion-service&apos;&#x0D;&#x0A;- Original element: &apos;deployment.yaml&apos;" description="Copy file" destination="=currency-conversion-service" element1="deployment.yaml" files="1" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1636536990988" units="0" version="1.0"/>
+</session>
