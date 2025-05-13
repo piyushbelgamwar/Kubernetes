@@ -1,0 +1,218 @@
+Looking at your `AdminServiceImpl` code, here are the key places where you can implement async functionality to improve performance:
+
+## 1. All Audit Logging Methods (High Priority)
+
+Make all audit-related methods async since they don't need to block the main business logic:
+
+```java
+@Async("auditExecutor")
+public CompletableFuture<Void> updateAuditRecordAsync(RestTemplate restTemplate, SaveAuditDetailsRequest auditDetailsRequest, Map<String, String> headersMap) {
+    // Move existing updateAuditRecord logic here
+    HttpEntity<SaveAuditDetailsRequest> auditEntity = new HttpEntity<>(auditDetailsRequest, getHeaders(headersMap));
+    StringBuffer url = new StringBuffer();
+    String strUrl = url.append(env.getProperty(protocol)).append(env.getProperty(DCP_SCS_Audit_Service)).append(env.getProperty(suffix))
+            .append(fdcScsAuditPathAuditEvents).toString();
+
+    UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(strUrl);
+    LOGGER.info("Calling Audit Service on :- {} ", url);
+    restTemplate.postForEntity(
+            builder.toUriString(),
+            auditEntity,
+            String.class
+    );
+    return CompletableFuture.completedFuture(null);
+}
+
+@Async("auditExecutor")
+public CompletableFuture<Void> updateAuditRecordForUserActivityAsync(String auditUser, String auditCode, RestTemplate restTemplate, Map<String, String> headersMap) {
+    SaveAuditDetailsRequest auditDetailsRequest = getAuditRecordRequestForUserAction(auditUser, auditCode);
+    updateAuditRecordAsync(restTemplate, auditDetailsRequest, headersMap);
+    return CompletableFuture.completedFuture(null);
+}
+
+@Async("auditExecutor")
+public CompletableFuture<Void> updateAuditRecordForUserActivityAsync(String firmName, String auditUser, String auditCode, RestTemplate restTemplate, Map<String, String> headersMap) {
+    SaveAuditDetailsRequest saveAuditDetailsRequest = getAuditRecordRequestForUserAction(auditUser, auditCode);
+    saveAuditDetailsRequest.getAuditEvent().setAuditType(Constants.FIRM);
+    if(headersMap.containsKey(Constants.FRN))
+        saveAuditDetailsRequest.getAuditEvent().setFirmReferenceNo(Integer.valueOf(headersMap.get(Constants.FRN)));
+    saveAuditDetailsRequest.setExtraValueList(Arrays.asList(new ExtraAuditValues(Constants.FIRM_NAME, firmName)));
+    
+    updateAuditRecordAsync(restTemplate, saveAuditDetailsRequest, headersMap);
+    return CompletableFuture.completedFuture(null);
+}
+```
+
+## 2. Update userLogout Method
+
+Make audit logging async in logout:
+
+```java
+@Override
+public Object userLogout(String userName, Integer frn, RestTemplate restTemplate, Map<String, String> headersMap) {
+    StringBuilder url = new StringBuilder();
+    url.append(env.getProperty(protocol)).append(env.getProperty(DCP_SCS_Usermgmt_Service)).append(env.getProperty(suffix))
+            .append(fdcScsUserMgmtPathLogout)
+            .append(userName);
+    UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url.toString());
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    headers.set("Accept", MediaType.APPLICATION_JSON_VALUE);
+    headers.setAll(headersMap);
+    HttpEntity<Object> entity = new HttpEntity<>(headers);
+    LOGGER.info("Calling userManagement service for logout API url:{}", builder.toUriString());
+    try {
+        Object response = restTemplate.exchange(
+                builder.toUriString(),
+                HttpMethod.POST,
+                entity,
+                Object.class
+        ).getBody();
+        
+        // Make audit logging async - don't wait for completion
+        if (frn != null && Integer.valueOf(frn) != null) {
+            updateAuditRecordForUserActivityAsync(userName, frn, Constants.AUD63_LOGOFF_SUCCESSFUL, restTemplate, headersMap);
+        } else {
+            updateAuditRecordForUserActivityAsync(userName, Constants.AUD63_LOGOFF_SUCCESSFUL, restTemplate, headersMap);
+        }
+
+        return response;
+    } catch (HttpClientErrorException exception) {
+        LOGGER.error("Exception in calling User management service logout api", exception);
+        throw new ChangePasswordException(exception.getResponseBodyAsString());
+    }
+}
+```
+
+## 3. Update firmAssociations Method
+
+Make unsuccessful audit logging async:
+
+```java
+@Override
+public AggregatedScheduleResponse firmAssociations(String userId, Map<String, String> headersMap) {
+    LOGGER.info("externalUserLogin Time Start {}", LocalTime.now());
+
+    AggregatedScheduleResponse response = new AggregatedScheduleResponse();
+    UserAuthAndFirmAssociationsResponse firmUserAssociation;
+    try {
+        firmUserAssociation = restService.userAuthAndFirmAssociations(userId, headersMap);
+        response.setFirmUserAssociation(firmUserAssociation);
+    } catch (InvalidInputDataException ex) {
+        LOGGER.error("Firms Not Available Exception: {}" + ex.getMessage());
+        // Make this async
+        updateAuditRecordForUserActivityAsync(userId, Constants.AUD53_INACTIVE_LINK_LOGIN_UNSUCCESSFUL, restTemplate, headersMap);
+        throw ex;
+    }
+    if (firmUserAssociation == null || firmUserAssociation.getFirms() == null || firmUserAssociation.getFirms().size() == 0) {
+        LOGGER.warn("NO Firms Available for the user : {} ", Utility.whiteList(userId));
+        // Make this async
+        updateAuditRecordForUserActivityAsync(userId, Constants.AUD53_INACTIVE_LINK_LOGIN_UNSUCCESSFUL, restTemplate, headersMap);
+        return response;
+    }
+    // ... rest of the method
+    return response;
+}
+```
+
+## 4. Update updateFirmStatus Method
+
+Make audit logging async:
+
+```java
+@Override
+public String updateFirmStatus(Integer frn, FirmStatusDetails firmStatusDetails, RestTemplate restTemplate, Map<String, String> headersMap) {
+    String response = null;
+
+    StringBuffer url = new StringBuffer();
+    url.append(env.getProperty(protocol)).append(env.getProperty(DCP_SCS_FirmManagement_Service)).append(env.getProperty(suffix))
+            .append(fdcScsfirmmgmtPathfirmStatusDetails).append(frn);
+    LOGGER.info("updateFirmStatusDetails string URL :- {} ", url);
+    UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url.toString());
+    response = updateFirmStatusDetails(builder, firmStatusDetails, restTemplate, headersMap);
+    if (null != response && !response.isEmpty()) {
+        boolean flag = true;
+        if (firmStatusDetails.getFirmStatusName().equalsIgnoreCase("ENABLED")) {
+            // Make async - don't wait for audit completion
+            updateAuditRecordFirmStatusChangeAsync(frn, firmStatusDetails.getAdministrator(), Constants.AUD91_ENABLE_FIRM_AUDIT_CODE, restTemplate, headersMap);
+        } else {
+            // Make async - don't wait for audit completion
+            updateAuditRecordFirmStatusChangeAsync(frn, firmStatusDetails.getAdministrator(), Constants.AUD90_DISABLE_FIRM_AUDIT_CODE, restTemplate, headersMap);
+        }
+    }
+    return response;
+}
+
+@Async("auditExecutor")
+private CompletableFuture<Void> updateAuditRecordFirmStatusChangeAsync(Integer frn, String auditUser, String auditCode, RestTemplate restTemplate, Map<String, String> headersMap) {
+    SaveAuditDetailsRequest auditDetailsRequest = getAuditRecordRequest(frn, auditUser, auditCode, restTemplate, headersMap);
+    updateAuditRecordAsync(restTemplate, auditDetailsRequest, headersMap);
+    return CompletableFuture.completedFuture(null);
+}
+```
+
+## 5. Add Helper Method for Multiple Async Operations
+
+When you need to make multiple service calls in parallel:
+
+```java
+@Async("taskExecutor")
+public CompletableFuture<FirmSchedule> getFirmScheduleAsync(Integer frn, Map<String, String> headersMap) {
+    return CompletableFuture.completedFuture(restService.getfirmSchedule(frn, headersMap));
+}
+
+@Async("taskExecutor")
+public CompletableFuture<List<List<String>>> getCrossValidationGroupsAsync(Map<String, String> headersMap) {
+    return CompletableFuture.completedFuture(restService.crossValidationGroups(headersMap));
+}
+
+@Async("taskExecutor")
+public CompletableFuture<List<FirmProfile>> getFirmProfileAsync(Integer frn, String effectiveToDate, Map<String, String> headersMap) {
+    return CompletableFuture.completedFuture(restService.firmProfile(frn, effectiveToDate, headersMap));
+}
+```
+
+## 6. Example: Making Multiple Calls Async in viewSchedule
+
+```java
+@Override
+public AggregatedScheduleResponse viewSchedule(String userType, Integer frn, boolean getPU, boolean getCVGroups, boolean getFirmProfile, Map<String, String> headersMap) {
+    
+    AggregatedScheduleResponse response = new AggregatedScheduleResponse();
+    
+    // Start multiple async operations
+    CompletableFuture<FirmSchedule> firmScheduleFuture = getFirmScheduleAsync(frn, headersMap);
+    CompletableFuture<List<List<String>>> crossValidationFuture = getCrossValidationGroupsAsync(headersMap);
+    CompletableFuture<List<FirmProfile>> firmProfileFuture = getFirmProfileAsync(frn, null, headersMap);
+    
+    // Wait for all to complete
+    try {
+        CompletableFuture.allOf(firmScheduleFuture, crossValidationFuture, firmProfileFuture).get(10, TimeUnit.SECONDS);
+        
+        FirmSchedule fs = firmScheduleFuture.get();
+        if (fs != null) response.setFirmSchedule(fs.getFirmSchedule());
+        
+        response.setCrossValidationGroups(crossValidationFuture.get());
+        
+        if (getFirmProfile) {
+            response.setFirmProfile(firmProfileFuture.get());
+        }
+    } catch (Exception e) {
+        LOGGER.error("Error in async operations", e);
+        // Fallback to sync calls if needed
+    }
+    
+    return response;
+}
+```
+
+## Summary of Changes:
+
+1. **All audit methods** → Make async with `@Async` annotation
+2. **Login/Logout operations** → Make audit logging async  
+3. **Firm status updates** → Make audit logging async
+4. **Multiple service calls** → Use `CompletableFuture` to run in parallel
+5. **File operations** → Consider making async where appropriate
+
+The biggest performance gain will come from making **audit logging async** since it's called in many places and doesn't need to block the main business logic.
