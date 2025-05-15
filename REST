@@ -1,0 +1,31 @@
+@Bean 
+@Profile("!local") 
+public RestTemplate restTemplate() {
+    PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+    connectionManager.setMaxTotal(250);          // Increase for 600 users
+    connectionManager.setDefaultMaxPerRoute(75); // More connections per route
+    connectionManager.setValidateAfterInactivity(2000); // Faster validation
+    connectionManager.closeExpiredConnections();
+    connectionManager.closeIdleConnections(30, TimeUnit.SECONDS);
+
+    // Add request config for better performance
+    RequestConfig requestConfig = RequestConfig.custom()
+            .setConnectTimeout(5000)
+            .setSocketTimeout(15000)  
+            .setConnectionRequestTimeout(3000)  // Reduced to fail faster
+            .build();
+
+    CloseableHttpClient httpClient = HttpClients.custom()
+            .setConnectionManager(connectionManager)
+            .setDefaultRequestConfig(requestConfig)
+            .setConnectionTimeToLive(30, TimeUnit.SECONDS)
+            .setConnectionReuseStrategy(DefaultConnectionReuseStrategy.INSTANCE)
+            .setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
+            .build();
+
+    HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
+    requestFactory.setHttpClient(httpClient);
+
+    LOGGER.info("RestTemplate configured with optimized connection pooling - MaxTotal: 250, MaxPerRoute: 75");
+    return new RestTemplate(requestFactory);
+}
