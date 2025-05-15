@@ -1,1 +1,8 @@
-SELECT EXISTS(SELECT 1 FROM 
+query.append("SELECT EXISTS(SELECT 1 FROM " + getfirmsTableName() + " F, ");
+query.append(getFirmUserTableName() + " FU, ");
+query.append(getFirmUserRoleTableName() + " FUR ");
+query.append(" WHERE F.ACCOUNT_ID = FU.FRM_ACCOUNT_ID");
+query.append(" AND FU.FIRM_USER_ID = FUR.FIRM_USER_ID");
+query.append(" AND FUR.ROLE_ID=1");
+query.append(" AND FU.USER_NAME = :username");
+query.append(" AND F.FIRM_REFERENCE_NUMBER = :frn)");
