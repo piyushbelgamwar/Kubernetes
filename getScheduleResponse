@@ -1,205 +1,32 @@
-private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> responseList) {
-    List<ScheduleDataItems> scheduleDataItemsList = new ArrayList<>();
-    List<Long> firmDataItemIdList = new ArrayList<>();
-    List<Long> firmDataItemIdListForErrFlag = new ArrayList<>();
-    ObjectMapper objectMapper = new ObjectMapper();
-    List<Map<String, Object>> firmDataItemIdListForREP = new ArrayList<>();
-    List<Map<String, Object>> firmDataItemIdListForREPSubmitted = new ArrayList<>();
-    
-    boolean featureFlagReg9584 = FeatureToggle.isFeatureEnabled(Constants.REG9584);
-    
-    // *** KEEP ORIGINAL SEQUENTIAL PROCESSING TO MAINTAIN EXACT ORDER ***
-    for (ScheduleDataItem scheduleDataItem : responseList) {
-        ScheduleDataItems scheduleDataItems = new ScheduleDataItems();
-        if (scheduleDataItem != null) {
-            scheduleDataItems = setScheduleDataItems(scheduleDataItem);
-            scheduleDataItems.setReportingPeriodStart(scheduleDataItem.getPeriodStartDate());
-            scheduleDataItems.setReportingPeriodEnd(scheduleDataItem.getPeriodEndDate());
-            scheduleDataItems.setSubmissionDueDate(scheduleDataItem.getSubmissionDueDate());
-            scheduleDataItems.setDataItemType(checkDataItemType(scheduleDataItem.getHandbookReference()));
-            scheduleDataItems.setScheduleDataItemId(scheduleDataItem.getScheduleId());
-            scheduleDataItems.setHandbookReference(scheduleDataItem.getHandbookReference());
-            scheduleDataItems.setCopyNumber(scheduleDataItem.getCopyNumber());
-            scheduleDataItems.setSubsetStatus(scheduleDataItem.getSubsetStatus());
-            scheduleDataItems.setCreatedDate(scheduleDataItem.getCreatedDdate());
-            scheduleDataItems.setUpdateDate(scheduleDataItem.getUpdatedDate());
-            
-            // *** KEEP ALL ORIGINAL LOGIC EXACTLY AS IS ***
-            if (scheduleDataItem.getRagName() != null) {
-                scheduleDataItems.setRagName(scheduleDataItem.getRagName());
-            }
-            if (scheduleDataItem.getInformationCategoryName() != null) {
-                scheduleDataItems.setInformationCategoryName(scheduleDataItem.getInformationCategoryName());
-            }
-            scheduleDataItems.setCompletionStatus(scheduleDataItem.getCompletionStatus());
-            scheduleDataItems.setDataItemName(scheduleDataItem.getDataItemName());
-            scheduleDataItems.setStatus(scheduleDataItem.getStatus());
-            if (scheduleDataItem.getSubmittedBy() != null) {
-                scheduleDataItems.setSubmittedBy(scheduleDataItem.getSubmittedBy());
-            }
-            if (scheduleDataItem.getSubmittedDate() != null) {
-                scheduleDataItems.setSubmittedDate(CommonUtility.convertTimeStampToISODate(scheduleDataItem.getSubmittedDate()));
-            }
-            if (scheduleDataItem.getSubmitOnBehalf() != null) {
-                scheduleDataItems.setSubmitOnBehalf(scheduleDataItem.getSubmitOnBehalf());
-            }
-            if (scheduleDataItem.getSubmissionMedthod() != null) {
-                scheduleDataItems.setSubmissionMethod(scheduleDataItem.getSubmissionMedthod());
-            }
-            if (scheduleDataItem.getSubmissionReferenceNumber() != null) {
-                scheduleDataItems.setSubmissionReferenceNumber(scheduleDataItem.getSubmissionReferenceNumber());
-            }
-            if (scheduleDataItem.getGroupSubmitterFrn() != null) {
-                scheduleDataItems.setGroupSubmitterFrn(scheduleDataItem.getGroupSubmitterFrn());
-            }
-            if (scheduleDataItem.getHandbookReference() != null) {
-                if (uk.org.fca.gabriel.scs.lib.CommonUtility.checkIfXBRL(scheduleDataItems.getHandbookReference())) {
-                    scheduleDataItems.setXbrl(true);
-                    if (Constants.SUBMITTED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
-                        Constants.COPY_CREATED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus())) {
-                        firmDataItemIdList.add(scheduleDataItems.getFirmDataItemId());
-                    }
-                    if (!(Constants.NODATA.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
-                          Constants.FAILED_VALIDATION.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()))) {
-                        firmDataItemIdListForErrFlag.add(scheduleDataItems.getFirmDataItemId());
-                    }
-                } else {
-                    scheduleDataItems.setXbrl(false);
-                }
-                
-                // *** KEEP ORIGINAL A2C LOGIC EXACTLY ***
-                if (scheduleDataItems.getHandbookReference().startsWith("REP026") && featureFlagReg9584) {
-                    Map<String, Object> row = new HashMap<>();
-                    row.put(Constants.FIRMDATAITEMID, scheduleDataItems.getFirmDataItemId());
-                    row.put(Constants.HANDBOOKREFERENCE, scheduleDataItems.getHandbookReference());
-                    row.put(Constants.REPORTINGENDDATE, scheduleDataItems.getReportingPeriodEnd());
-                    scheduleDataItems.setA2c(true);
-                    
-                    if (Constants.SUBMITTED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
-                        Constants.COPY_CREATED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus())) {
-                        firmDataItemIdListForREPSubmitted.add(row);
-                    } else if (!(Constants.DRAFT.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
-                                Constants.FAILED_VALIDATION.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
-                                Constants.NODATA.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()))) {
-                        firmDataItemIdListForREP.add(row);
-                    }
-                } else {
-                    scheduleDataItems.setA2c(false);
-                }
-            }
-            if (!StringUtils.isEmpty(scheduleDataItem.getVersion()))
-                scheduleDataItems.setVersion(scheduleDataItem.getVersion());
-        }
-        scheduleDataItemsList.add(scheduleDataItems);
-    }
-
-    try {
-        // *** ONLY OPTIMIZATION: PARALLEL API CALLS (NO BEHAVIOR CHANGE) ***
-        CompletableFuture<Map<String, String>> filingFuture = CompletableFuture.supplyAsync(() -> 
-            getFilingIndicators(firmDataItemIdList), executorService);
-        
-        CompletableFuture<Map<String, String>> xbrlErrorFuture = CompletableFuture.supplyAsync(() -> 
-            getXbrlErrorFlag(firmDataItemIdListForErrFlag), executorService);
-        
-        // Wait for both to complete
-        Map<String, String> result = filingFuture.get(30, TimeUnit.SECONDS);
-        Map<String, String> xbrlErrorMap = xbrlErrorFuture.get(30, TimeUnit.SECONDS);
-        
-        // *** KEEP SEQUENTIAL DEPENDENT CALLS ***
-        Map<String, Map<String, Object>> dataItemDetailsForRep = new HashMap<>();
-        Map<String, Map<String, Object>> submittedDataItemDetailsForRep = new HashMap<>();
-        
-        if (featureFlagReg9584 && !firmDataItemIdListForREP.isEmpty())
-            dataItemDetailsForRep = getDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREP));
-        
-        if (featureFlagReg9584 && !firmDataItemIdListForREPSubmitted.isEmpty())
-            submittedDataItemDetailsForRep = getSubmittedDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREPSubmitted));
-
-        // *** KEEP ORIGINAL ENHANCEMENT LOOP EXACTLY AS IS ***
-        for (ScheduleDataItems scheduleDataItem : scheduleDataItemsList) {
-            if (result != null && !result.isEmpty()) {
-                if (scheduleDataItem.getXbrl() && (Constants.SUBMITTED.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()) || 
-                        Constants.COPY_CREATED.equalsIgnoreCase(scheduleDataItem.getCompletionStatus())) && 
-                        result.get(String.valueOf(scheduleDataItem.getFirmDataItemId())) != null) {
-                    scheduleDataItem.setFilingIndicators(result.get(String.valueOf(scheduleDataItem.getFirmDataItemId())));
-                }
-            }
-            if (scheduleDataItem.getXbrl() && xbrlErrorMap != null && !xbrlErrorMap.isEmpty()) {
-                if (!(Constants.NODATA.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()) || 
-                      Constants.FAILED_VALIDATION.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()))) {
-                    scheduleDataItem.setXbrlErrorFlag(xbrlErrorMap.get(String.valueOf(scheduleDataItem.getFirmDataItemId())));
-                }
-            }
-            
-            // *** KEEP ORIGINAL A2C PROCESSING EXACTLY ***
-            if (scheduleDataItem.getA2c() && featureFlagReg9584) {
-                if ((Constants.SUBMITTED.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()) || 
-                     Constants.COPY_CREATED.equalsIgnoreCase(scheduleDataItem.getCompletionStatus())) && 
-                     submittedDataItemDetailsForRep != null && !submittedDataItemDetailsForRep.isEmpty() && 
-                     submittedDataItemDetailsForRep.get(String.valueOf(scheduleDataItem.getFirmDataItemId())) != null && 
-                     !submittedDataItemDetailsForRep.get(String.valueOf(scheduleDataItem.getFirmDataItemId())).get(Constants.VALIDATION_WARNINGS).equals(0)) {
-                    scheduleDataItem.setA2cErrorFlag(Constants.WARNING);
-                } else if (dataItemDetailsForRep != null && !dataItemDetailsForRep.isEmpty() && 
-                          dataItemDetailsForRep.get(String.valueOf(scheduleDataItem.getFirmDataItemId())) != null && 
-                          !dataItemDetailsForRep.get(String.valueOf(scheduleDataItem.getFirmDataItemId())).get(Constants.VALIDATION_WARNINGS).equals(0) && 
-                          !(Constants.NODATA.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()) || 
-                            Constants.FAILED_VALIDATION.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()) || 
-                            Constants.DRAFT.equalsIgnoreCase(scheduleDataItem.getCompletionStatus()))) {
-                    scheduleDataItem.setA2cErrorFlag(Constants.WARNING);
-                }
-            }
-        }
-
-    } catch (Exception e) {
-        LOGGER.error("Exception Occurred in getFilingIndicators ", e);
-    }
-
-    return scheduleDataItemsList;
-}
-
-
-try {
-    // *** ONLY OPTIMIZATION: PARALLEL API CALLS (NO BEHAVIOR CHANGE) ***
+try { 
+    // PARALLEL API CALLS
     CompletableFuture<Map<String, String>> filingFuture = CompletableFuture.supplyAsync(() -> 
         getFilingIndicators(firmDataItemIdList));
     
     CompletableFuture<Map<String, String>> xbrlErrorFuture = CompletableFuture.supplyAsync(() -> 
         getXbrlErrorFlag(firmDataItemIdListForErrFlag));
     
-    // PROPER TIMEOUT HANDLING
+    // HANDLE RESULTS WITH TIMEOUT
     Map<String, String> result = new HashMap<>();
     Map<String, String> xbrlErrorMap = new HashMap<>();
     
     try {
         result = filingFuture.get(30, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
-        LOGGER.warn("Filing indicators API timed out, using empty result", e);
+        LOGGER.warn("Filing indicators API timed out", e);
         filingFuture.cancel(true);
-        result = new HashMap<>();
     } catch (Exception e) {
         LOGGER.error("Error getting filing indicators", e);
-        result = new HashMap<>();
     }
     
     try {
         xbrlErrorMap = xbrlErrorFuture.get(30, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
-        LOGGER.warn("XBRL error API timed out, using empty result", e);
+        LOGGER.warn("XBRL error API timed out", e);
         xbrlErrorFuture.cancel(true);
-        xbrlErrorMap = new HashMap<>();
     } catch (Exception e) {
         LOGGER.error("Error getting XBRL errors", e);
-        xbrlErrorMap = new HashMap<>();
     }
     
-    // *** KEEP SEQUENTIAL DEPENDENT CALLS ***
-    Map<String, Map<String, Object>> dataItemDetailsForRep = new HashMap<>();
+    Map<String, Map<String, Object>> dataItemDetailsForRep = new HashMap<>(); 
     Map<String, Map<String, Object>> submittedDataItemDetailsForRep = new HashMap<>();
-    
-    if (featureFlagReg9584 && !firmDataItemIdListForREP.isEmpty())
-        dataItemDetailsForRep = getDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREP));
-    
-    if (featureFlagReg9584 && !firmDataItemIdListForREPSubmitted.isEmpty())
-        submittedDataItemDetailsForRep = getSubmittedDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREPSubmitted));
-
-    // ... rest of the code stays the same
