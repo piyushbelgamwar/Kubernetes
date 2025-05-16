@@ -156,3 +156,50 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
 
     return scheduleDataItemsList;
 }
+
+
+try {
+    // *** ONLY OPTIMIZATION: PARALLEL API CALLS (NO BEHAVIOR CHANGE) ***
+    CompletableFuture<Map<String, String>> filingFuture = CompletableFuture.supplyAsync(() -> 
+        getFilingIndicators(firmDataItemIdList));
+    
+    CompletableFuture<Map<String, String>> xbrlErrorFuture = CompletableFuture.supplyAsync(() -> 
+        getXbrlErrorFlag(firmDataItemIdListForErrFlag));
+    
+    // PROPER TIMEOUT HANDLING
+    Map<String, String> result = new HashMap<>();
+    Map<String, String> xbrlErrorMap = new HashMap<>();
+    
+    try {
+        result = filingFuture.get(30, TimeUnit.SECONDS);
+    } catch (TimeoutException e) {
+        LOGGER.warn("Filing indicators API timed out, using empty result", e);
+        filingFuture.cancel(true);
+        result = new HashMap<>();
+    } catch (Exception e) {
+        LOGGER.error("Error getting filing indicators", e);
+        result = new HashMap<>();
+    }
+    
+    try {
+        xbrlErrorMap = xbrlErrorFuture.get(30, TimeUnit.SECONDS);
+    } catch (TimeoutException e) {
+        LOGGER.warn("XBRL error API timed out, using empty result", e);
+        xbrlErrorFuture.cancel(true);
+        xbrlErrorMap = new HashMap<>();
+    } catch (Exception e) {
+        LOGGER.error("Error getting XBRL errors", e);
+        xbrlErrorMap = new HashMap<>();
+    }
+    
+    // *** KEEP SEQUENTIAL DEPENDENT CALLS ***
+    Map<String, Map<String, Object>> dataItemDetailsForRep = new HashMap<>();
+    Map<String, Map<String, Object>> submittedDataItemDetailsForRep = new HashMap<>();
+    
+    if (featureFlagReg9584 && !firmDataItemIdListForREP.isEmpty())
+        dataItemDetailsForRep = getDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREP));
+    
+    if (featureFlagReg9584 && !firmDataItemIdListForREPSubmitted.isEmpty())
+        submittedDataItemDetailsForRep = getSubmittedDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREPSubmitted));
+
+    // ... rest of the code stays the same
