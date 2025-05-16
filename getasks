@@ -1,0 +1,109 @@
+@Override
+public Tasks getTasks(Integer frn, String userId, Map<String, String> headersMap) {
+
+    // *** KEEP ORIGINAL VALIDATION EXACTLY AS IS ***
+    if (null == frn || StringUtils.isEmpty(userId)) {
+        LOGGER.error("FRN or userId is null");
+        throw new InvalidInputDataException();
+    }
+    
+    // *** STEP 1: KEEP ORIGINAL DB CALL ***
+    List<ScheduleDataItem> scheduleDataItemsWithVersion = 
+        firmDataItemRDSRepository.retrieveScheduleAndSubSetDetailsAndVersion(frn);
+    
+    // *** STEP 2: KEEP ORIGINAL DATA PROCESSING EXACTLY AS IS ***
+    List<ScheduleResponse> scheduleResponseList = getScheduleResponseList(scheduleDataItemsWithVersion);
+
+    // GetPsdAndAifmdProfileCharacteristics 
+    PSDAIFMDProfileCheckResponse psdAifmdProfileCharacteristics = 
+        getPsdAifmdProfileCharacteristicts(frn, headersMap);
+    final List<String> psdTypes = this.checkPSDType(psdAifmdProfileCharacteristics);
+
+    // *** STEP 3: KEEP ORIGINAL COLLECTIONS BUILDING EXACTLY AS IS ***
+    Set<String> handbookReferenceSet = new HashSet<>();
+    String joinedFirmDataItemIds = scheduleDataItemsWithVersion.stream()
+        .map(s -> {
+            Long id = s.getFirmDataItemId();
+            handbookReferenceSet.add(s.getHandbookReference());
+            return id;
+        }).map(String::valueOf)
+        .collect(Collectors.joining(", "));
+
+    Map<Long, String> firmDataItemIdDataItemDataMap = new HashMap<>();
+    scheduleDataItemsWithVersion.stream()
+        .filter(s -> Arrays.asList("REP005","REP021B","REP021D").contains(s.getHandbookReference().toUpperCase()))
+        .filter(s -> !(Constants.STATUS_NO_DATA.equalsIgnoreCase(s.getCompletionStatus()) 
+                || Constants.STATUS_FAILED_VALIDATION.equalsIgnoreCase(s.getCompletionStatus())))
+        .forEach(s -> firmDataItemIdDataItemDataMap.put(s.getFirmDataItemId(),s.getFirmDataItemData()));
+
+    // *** STEP 4: ONLY OPTIMIZATION - PARALLEL INDEPENDENT API CALLS ***
+    // These 3 calls are completely independent and can run in parallel
+    CompletableFuture<Map<String, Boolean>> hasDataFuture = CompletableFuture.supplyAsync(() -> 
+        firmDataItemIdDataItemDataMap.isEmpty() ? new HashMap<>() : 
+            checkFirmDataItemForData(firmDataItemIdDataItemDataMap));
+    
+    CompletableFuture<Map<Long, DataItemCurrencyUnitResponse>> currencyFuture = CompletableFuture.supplyAsync(() -> 
+        retrieveMultipleCurrencyAndCurrencyUnit(
+            new MultipleCurrencyUnitRequest(joinedFirmDataItemIds, String.valueOf(frn))));
+    
+    CompletableFuture<AuthorisationResponse> authFuture = CompletableFuture.supplyAsync(() -> 
+        getCurrentUserAuthForDataItems(
+            new CurrentAuthForDataItemRequest(frn, new ArrayList<>(handbookReferenceSet), userId)));
+    
+    // *** STEP 5: GET RESULTS WITH EXACT SAME ERROR HANDLING ***
+    Map<String, Boolean> firmDataItemIdHasDataMap;
+    try {
+        firmDataItemIdHasDataMap = hasDataFuture.get(30, TimeUnit.SECONDS);
+    } catch (Exception e) {
+        LOGGER.error("Error getting hasData map", e);
+        firmDataItemIdHasDataMap = new HashMap<>();
+    }
+
+    Map<Long, DataItemCurrencyUnitResponse> multipleCurrencyUnitResponse;
+    try {
+        multipleCurrencyUnitResponse = currencyFuture.get(30, TimeUnit.SECONDS);
+    } catch (Exception e) {
+        LOGGER.error("Error getting currency response", e);
+        throw new InvalidInputDataException(); // Same behavior as original
+    }
+
+    // *** KEEP ORIGINAL NULL CHECK EXACTLY AS IS ***
+    if (null == multipleCurrencyUnitResponse){
+        LOGGER.error("multipleCurrencyUnitResponse is null");
+        throw new InvalidInputDataException();
+    }
+
+    AuthorisationResponse authResponse;
+    try {
+        authResponse = authFuture.get(30, TimeUnit.SECONDS);
+    } catch (Exception e) {
+        LOGGER.error("Error getting auth response", e);
+        throw new InvalidInputDataException(); // Same behavior as original
+    }
+    
+    // *** KEEP ORIGINAL PROCESSING EXACTLY AS IS ***
+    List<DataItemPrivilege> dataItemPrivileges = null;
+    if(null != authResponse) {
+        dataItemPrivileges = authResponse.getDataItemPrivileges();
+    }
+
+    if (null == dataItemPrivileges){
+        LOGGER.error("dataItemPrivileges is null");
+        throw new InvalidInputDataException();
+    }
+
+    Map<String, List<DataItemPrivilege>> handbookReferenceDataItemPrivilegeMap = 
+        dataItemPrivileges.stream().collect(Collectors.groupingBy(DataItemPrivilege::getHandbookReference));
+    boolean isPrincipalUser = authResponse.isPrincipalUser();
+
+    // *** KEEP ORIGINAL TRAVEL DATE CALL ***
+    Date travelDate = firmDataItemRDSRepository.getTravelDate();
+    
+    // *** KEEP ORIGINAL TASK CREATION EXACTLY AS IS ***
+    LOGGER.info("Creating Tasks started --> ");
+    Tasks tasks = new Tasks();
+    tasks.setTasks(getTaskList(frn, scheduleResponseList, psdTypes, multipleCurrencyUnitResponse, 
+                                handbookReferenceDataItemPrivilegeMap, isPrincipalUser, travelDate, firmDataItemIdHasDataMap));
+    LOGGER.info("Get Tasks Completed Successfully!!");
+    return tasks;
+}
