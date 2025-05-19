@@ -1,8 +1,3 @@
-# Optimized `getScheduleResponse` Method
-
-Here's the complete optimized method with comments that you can directly copy and paste into your codebase:
-
-```java
 /**
  * Converts ScheduleDataItem entities to ScheduleDataItems DTOs and populates
  * additional metadata through efficient batch processing.
@@ -16,6 +11,8 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
     
     // Initialize collections
     List<ScheduleDataItems> scheduleDataItemsList = new ArrayList<>();
+    List<Long> firmDataItemIdList = new ArrayList<>();
+    List<Long> firmDataItemIdListForErrFlag = new ArrayList<>();
     ObjectMapper objectMapper = new ObjectMapper();
     List<Map<String, Object>> firmDataItemIdListForREP = new ArrayList<>();
     List<Map<String, Object>> firmDataItemIdListForREPSubmitted = new ArrayList<>();
@@ -24,23 +21,62 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
     // Check feature toggle state once
     featureFlagReg9584 = FeatureToggle.isFeatureEnabled(Constants.REG9584);
     
-    // STEP 1: Convert database entities to DTOs
+    // STEP 1: Convert database entities to DTOs - KEEP THIS EXACTLY AS ORIGINAL
     LOGGER.debug("Converting database entities to DTOs...");
     for (ScheduleDataItem scheduleDataItem : responseList) {
         scheduleDataItems = new ScheduleDataItems();
         if (scheduleDataItem != null) {
-            // Base property mapping using existing helper
-            scheduleDataItems = setScheduleDataItems(scheduleDataItem);
+            // Handle AIF002 special case
+            if (scheduleDataItem.getHandbookReference() != null && 
+                scheduleDataItem.getHandbookReference().equals("AIF002")) {
+                scheduleDataItems.setAifManaged(scheduleDataItem.getAifManaged());
+                scheduleDataItems.setAifSubmitted(scheduleDataItem.getAifSubmitted());
+            }
             
-            // Date-related fields
+            // Set reporting basis properties
+            scheduleDataItems.setReportingBasisId(scheduleDataItem.getReportBasisId());
+            scheduleDataItems.setReportingBasisName(scheduleDataItem.getReportingBasisName());
+            scheduleDataItems.setReportingBasisDisplayName(scheduleDataItem.getReportingBasisDisplayName());
+            scheduleDataItems.setSwitchedSections(scheduleDataItem.getSwitchedSections());
+            scheduleDataItems.setAllowGroupReporting(scheduleDataItem.getAllowGroupReporting());
+            
+            if (scheduleDataItem.getAllowGroupReporting() != null) {
+                scheduleDataItems.setAllowGroupReporting(scheduleDataItem.getAllowGroupReporting());
+            }
+            
+            // Set item identifiers
+            scheduleDataItems.setFirmDataItemId(scheduleDataItem.getFirmDataItemId());
+            
+            // Set optional properties
+            if (scheduleDataItem.getGroupReportingSupported() != null) {
+                scheduleDataItems.setGroupReportingSupported(scheduleDataItem.getGroupReportingSupported());
+            }
+            
+            if (scheduleDataItem.getFileAttachmentName() != null) {
+                scheduleDataItems.setFileAttachmentPath(scheduleDataItem.getFileAttachmentName());
+            }
+            
+            if (scheduleDataItem.getFirmDataItemData() != null) {
+                scheduleDataItems.setFirmDataItemData(scheduleDataItem.getFirmDataItemData());
+            }
+            
+            if (scheduleDataItem.getLastUpdatedBy() != null) {
+                scheduleDataItems.setUpdatedBy(scheduleDataItem.getLastUpdatedBy());
+            }
+            
+            if (scheduleDataItem.getFlowCurrency() != null) {
+                scheduleDataItems.setFlowCurrency(scheduleDataItem.getFlowCurrency());
+            }
+            
+            if (scheduleDataItem.getLastUpdatedDate() != null) {
+                scheduleDataItems.setUpdatedDateTime(scheduleDataItem.getLastUpdatedDate());
+            }
+            
+            // Set additional fields
             scheduleDataItems.setReportingPeriodStart(scheduleDataItem.getPeriodStartDate());
             scheduleDataItems.setReportingPeriodEnd(scheduleDataItem.getPeriodEndDate());
             scheduleDataItems.setSubmissionDueDate(scheduleDataItem.getSubmissionDueDate());
-            
-            // Determine data item type
             scheduleDataItems.setDataItemType(checkDataItemType(scheduleDataItem.getHandbookReference()));
-            
-            // Core identifiers
             scheduleDataItems.setScheduleDataItemId(scheduleDataItem.getScheduleId());
             scheduleDataItems.setHandbookReference(scheduleDataItem.getHandbookReference());
             scheduleDataItems.setCopyNumber(scheduleDataItem.getCopyNumber());
@@ -48,35 +84,38 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
             scheduleDataItems.setCreatedDate(scheduleDataItem.getCreatedDdate());
             scheduleDataItems.setUpdateDate(scheduleDataItem.getUpdatedDate());
             
-            // Optional fields with null checks
             if (scheduleDataItem.getRagName() != null) {
                 scheduleDataItems.setRagName(scheduleDataItem.getRagName());
             }
+            
             if (scheduleDataItem.getInformationCategoryName() != null) {
                 scheduleDataItems.setInformationCategoryName(scheduleDataItem.getInformationCategoryName());
             }
             
-            // Status fields
             scheduleDataItems.setCompletionStatus(scheduleDataItem.getCompletionStatus());
             scheduleDataItems.setDataItemName(scheduleDataItem.getDataItemName());
             scheduleDataItems.setStatus(scheduleDataItem.getStatus());
             
-            // Submission details
             if (scheduleDataItem.getSubmittedBy() != null) {
                 scheduleDataItems.setSubmittedBy(scheduleDataItem.getSubmittedBy());
             }
+            
             if (scheduleDataItem.getSubmittedDate() != null) {
                 scheduleDataItems.setSubmittedDate(CommonUtility.convertTimeStampToISODate(scheduleDataItem.getSubmittedDate()));
             }
+            
             if (scheduleDataItem.getSubmitOnBehalf() != null) {
                 scheduleDataItems.setSubmitOnBehalf(scheduleDataItem.getSubmitOnBehalf());
             }
+            
             if (scheduleDataItem.getSubmissionMedthod() != null) {
                 scheduleDataItems.setSubmissionMethod(scheduleDataItem.getSubmissionMedthod());
             }
+            
             if (scheduleDataItem.getSubmissionReferenceNumber() != null) {
                 scheduleDataItems.setSubmissionReferenceNumber(scheduleDataItem.getSubmissionReferenceNumber());
             }
+            
             if (scheduleDataItem.getGroupSubmitterFrn() != null) {
                 scheduleDataItems.setGroupSubmitterFrn(scheduleDataItem.getGroupSubmitterFrn());
             }
@@ -84,22 +123,29 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
             // OPTIMIZATION: Set XBRL and A2C flags with data collection for batch processing 
             if (scheduleDataItem.getHandbookReference() != null) {
                 // XBRL detection and flag setting
-                if (uk.org.fca.gabriel.scs.lib.CommonUtility.checkIfXBRL(scheduleDataItems.getHandbookReference())) {
-                    scheduleDataItems.setXbrl(true);
-                } else {
-                    scheduleDataItems.setXbrl(false);
+                boolean isXbrl = uk.org.fca.gabriel.scs.lib.CommonUtility.checkIfXBRL(scheduleDataItems.getHandbookReference());
+                scheduleDataItems.setXbrl(isXbrl);
+                
+                // OPTIMIZATION: Collect IDs for batch processing instead of individual processing
+                if (isXbrl) {
+                    if (Constants.SUBMITTED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
+                        Constants.COPY_CREATED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus())) {
+                        firmDataItemIdList.add(scheduleDataItems.getFirmDataItemId());
+                    }
+                    
+                    if (!(Constants.NODATA.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
+                          Constants.FAILED_VALIDATION.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()))) {
+                        firmDataItemIdListForErrFlag.add(scheduleDataItems.getFirmDataItemId());
+                    }
                 }
                 
                 // A2C detection and data collection
                 if (scheduleDataItems.getHandbookReference().startsWith("REP026") && featureFlagReg9584) {
-                    // Mark item as A2C
-                    scheduleDataItems.setA2c(true);
-                    
-                    // Create data collection for batch processing
                     Map<String, Object> row = new HashMap<>();
                     row.put(Constants.FIRMDATAITEMID, scheduleDataItems.getFirmDataItemId());
                     row.put(Constants.HANDBOOKREFERENCE, scheduleDataItems.getHandbookReference());
                     row.put(Constants.REPORTINGENDDATE, scheduleDataItems.getReportingPeriodEnd());
+                    scheduleDataItems.setA2c(true);
                     
                     // Collect based on completion status
                     if (Constants.SUBMITTED.equalsIgnoreCase(scheduleDataItems.getCompletionStatus()) || 
@@ -125,14 +171,34 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
     
     LOGGER.debug("Entity conversion completed. Processing metadata...");
     
-    // STEP 2: Process A2C data (batch processing for A2C items)
+    // OPTIMIZATION: Process metadata with batch calls instead of individual calls
     try {
-        // OPTIMIZATION: Process A2C data efficiently 
-        // Only make service calls if we have A2C data to process
+        // STEP 2: Get all metadata in batch
+        LOGGER.debug("Starting batch service calls for metadata");
+        
+        // OPTIMIZATION: Batch call for filing indicators
+        Map<String, String> filingIndicators = Collections.emptyMap();
+        if (!firmDataItemIdList.isEmpty()) {
+            LOGGER.debug("Fetching filing indicators for {} items", firmDataItemIdList.size());
+            long filingStart = System.currentTimeMillis();
+            filingIndicators = getFilingIndicators(firmDataItemIdList);
+            LOGGER.debug("Filing indicators fetched in {}ms", System.currentTimeMillis() - filingStart);
+        }
+        
+        // OPTIMIZATION: Batch call for error flags
+        Map<String, String> xbrlErrorMap = Collections.emptyMap();
+        if (!firmDataItemIdListForErrFlag.isEmpty()) {
+            LOGGER.debug("Fetching XBRL error flags for {} items", firmDataItemIdListForErrFlag.size());
+            long errorFlagStart = System.currentTimeMillis();
+            xbrlErrorMap = getXbrlErrorFlag(firmDataItemIdListForErrFlag);
+            LOGGER.debug("XBRL error flags fetched in {}ms", System.currentTimeMillis() - errorFlagStart);
+        }
+        
+        // Process A2C items
+        Map<String, Map<String, Object>> dataItemDetailsForRep = Collections.emptyMap();
+        Map<String, Map<String, Object>> submittedDataItemDetailsForRep = Collections.emptyMap();
+        
         if (featureFlagReg9584) {
-            Map<String, Map<String, Object>> dataItemDetailsForRep = new HashMap<>();
-            Map<String, Map<String, Object>> submittedDataItemDetailsForRep = new HashMap<>();
-            
             // Batch process REP data items
             if (!firmDataItemIdListForREP.isEmpty()) {
                 LOGGER.debug("Fetching A2C details for {} regular REP items", firmDataItemIdListForREP.size());
@@ -148,47 +214,71 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
                 submittedDataItemDetailsForRep = getSubmittedDataItemDetails(objectMapper.writeValueAsString(firmDataItemIdListForREPSubmitted));
                 LOGGER.debug("A2C submitted details fetched in {}ms", System.currentTimeMillis() - repSubmittedStart);
             }
+        }
+        
+        // STEP 3: Apply all metadata in one pass
+        LOGGER.debug("Applying metadata to items");
+        int filingIndicatorsApplied = 0;
+        int errorFlagsApplied = 0;
+        int a2cWarningsApplied = 0;
+        
+        for (ScheduleDataItems item : scheduleDataItemsList) {
+            String itemId = String.valueOf(item.getFirmDataItemId());
             
-            // Apply A2C error flags to items
-            int a2cWarningsApplied = 0;
-            for (ScheduleDataItems item : scheduleDataItemsList) {
-                if (item.getA2c()) {
-                    String id = String.valueOf(item.getFirmDataItemId());
+            // Apply filing indicators if applicable
+            if (item.getXbrl() && filingIndicators != null && !filingIndicators.isEmpty() &&
+                (Constants.SUBMITTED.equalsIgnoreCase(item.getCompletionStatus()) || 
+                 Constants.COPY_CREATED.equalsIgnoreCase(item.getCompletionStatus())) &&
+                filingIndicators.containsKey(itemId)) {
+                
+                item.setFilingIndicators(filingIndicators.get(itemId));
+                filingIndicatorsApplied++;
+            }
+            
+            // Apply error flags if applicable
+            if (item.getXbrl() && xbrlErrorMap != null && !xbrlErrorMap.isEmpty() &&
+                !(Constants.NODATA.equalsIgnoreCase(item.getCompletionStatus()) || 
+                 Constants.FAILED_VALIDATION.equalsIgnoreCase(item.getCompletionStatus())) &&
+                xbrlErrorMap.containsKey(itemId)) {
+                
+                item.setXbrlErrorFlag(xbrlErrorMap.get(itemId));
+                errorFlagsApplied++;
+            }
+            
+            // Apply A2C error flags if applicable
+            if (item.getA2c() && featureFlagReg9584) {
+                // For submitted items
+                if ((Constants.SUBMITTED.equalsIgnoreCase(item.getCompletionStatus()) || 
+                     Constants.COPY_CREATED.equalsIgnoreCase(item.getCompletionStatus())) && 
+                     submittedDataItemDetailsForRep != null && 
+                     !submittedDataItemDetailsForRep.isEmpty() && 
+                     submittedDataItemDetailsForRep.get(itemId) != null && 
+                     !submittedDataItemDetailsForRep.get(itemId).get(Constants.VALIDATION_WARNINGS).equals(0)) {
                     
-                    // Apply error flag for submitted items
-                    if ((Constants.SUBMITTED.equalsIgnoreCase(item.getCompletionStatus()) || 
-                         Constants.COPY_CREATED.equalsIgnoreCase(item.getCompletionStatus())) && 
-                         submittedDataItemDetailsForRep != null && 
-                         !submittedDataItemDetailsForRep.isEmpty() && 
-                         submittedDataItemDetailsForRep.get(id) != null && 
-                         !submittedDataItemDetailsForRep.get(id).get(Constants.VALIDATION_WARNINGS).equals(0)) {
-                        
-                        item.setA2cErrorFlag(Constants.WARNING);
-                        a2cWarningsApplied++;
-                    } 
-                    // Apply error flag for other status items
-                    else if (dataItemDetailsForRep != null && 
-                             !dataItemDetailsForRep.isEmpty() && 
-                             dataItemDetailsForRep.get(id) != null && 
-                             !dataItemDetailsForRep.get(id).get(Constants.VALIDATION_WARNINGS).equals(0) && 
-                             !(Constants.NODATA.equalsIgnoreCase(item.getCompletionStatus()) || 
-                               Constants.FAILED_VALIDATION.equalsIgnoreCase(item.getCompletionStatus()) || 
-                               Constants.DRAFT.equalsIgnoreCase(item.getCompletionStatus()))) {
-                        
-                        item.setA2cErrorFlag(Constants.WARNING);
-                        a2cWarningsApplied++;
-                    }
+                    item.setA2cErrorFlag(Constants.WARNING);
+                    a2cWarningsApplied++;
+                } 
+                // For other items
+                else if (dataItemDetailsForRep != null && 
+                         !dataItemDetailsForRep.isEmpty() && 
+                         dataItemDetailsForRep.get(itemId) != null && 
+                         !dataItemDetailsForRep.get(itemId).get(Constants.VALIDATION_WARNINGS).equals(0) && 
+                         !(Constants.NODATA.equalsIgnoreCase(item.getCompletionStatus()) || 
+                           Constants.FAILED_VALIDATION.equalsIgnoreCase(item.getCompletionStatus()) || 
+                           Constants.DRAFT.equalsIgnoreCase(item.getCompletionStatus()))) {
+                    
+                    item.setA2cErrorFlag(Constants.WARNING);
+                    a2cWarningsApplied++;
                 }
             }
-            LOGGER.debug("Applied A2C warnings to {} items", a2cWarningsApplied);
         }
+        
+        LOGGER.debug("Applied {} filing indicators, {} error flags, and {} A2C warnings", 
+            filingIndicatorsApplied, errorFlagsApplied, a2cWarningsApplied);
+        
     } catch (Exception e) {
-        LOGGER.error("Exception occurred in A2C data processing: {}", e.getMessage(), e);
+        LOGGER.error("Exception occurred processing metadata: {}", e.getMessage(), e);
     }
-    
-    // STEP 3: Process XBRL items in batch
-    // OPTIMIZATION: Call new method that processes all XBRL metadata in batch
-    populateItemsMetadata(scheduleDataItemsList);
     
     long duration = System.currentTimeMillis() - startTime;
     LOGGER.info("Schedule response processing completed for {} items in {}ms", 
@@ -196,110 +286,3 @@ private List<ScheduleDataItems> getScheduleResponse(List<ScheduleDataItem> respo
     
     return scheduleDataItemsList;
 }
-```
-
-And here's the complementary `populateItemsMetadata` method that should be added:
-
-```java
-/**
- * Efficiently populates metadata (filing indicators, error flags) for schedule data items.
- * This method replaces individual database calls in loops with efficient batch operations.
- * 
- * @param items The list of schedule data items to process
- */
-private void populateItemsMetadata(List<ScheduleDataItems> items) {
-    long startTime = System.currentTimeMillis();
-    LOGGER.info("Starting metadata population for {} schedule data items", items.size());
-    
-    // 1. Extract all IDs in a single pass
-    Set<Long> xbrlItemIds = new HashSet<>();
-    Set<Long> errorFlagItemIds = new HashSet<>();
-    int xbrlItemCount = 0;
-    
-    LOGGER.debug("Identifying XBRL items requiring metadata...");
-    for (ScheduleDataItems item : items) {
-        if (item.getXbrl()) {
-            xbrlItemCount++;
-            
-            // Identify items needing filing indicators (submitted or copy created)
-            if (Constants.SUBMITTED.equalsIgnoreCase(item.getCompletionStatus()) || 
-                Constants.COPY_CREATED.equalsIgnoreCase(item.getCompletionStatus())) {
-                xbrlItemIds.add(item.getFirmDataItemId());
-            }
-            
-            // Identify items needing error flags (not NODATA or FAILED_VALIDATION)
-            if (!(Constants.NODATA.equalsIgnoreCase(item.getCompletionStatus()) || 
-                  Constants.FAILED_VALIDATION.equalsIgnoreCase(item.getCompletionStatus()))) {
-                errorFlagItemIds.add(item.getFirmDataItemId());
-            }
-        }
-    }
-    
-    LOGGER.debug("Found {} XBRL items: {} need filing indicators, {} need error flags",
-        xbrlItemCount, xbrlItemIds.size(), errorFlagItemIds.size());
-    
-    // 2. Make batch service calls once (not repeatedly in loops)
-    Map<String, String> filingIndicators = Collections.emptyMap();
-    Map<String, String> errorFlags = Collections.emptyMap();
-    
-    // Get filing indicators in one batch (if needed)
-    if (!xbrlItemIds.isEmpty()) {
-        LOGGER.debug("Fetching filing indicators for {} items", xbrlItemIds.size());
-        long filingStart = System.currentTimeMillis();
-        filingIndicators = getFilingIndicators(new ArrayList<>(xbrlItemIds));
-        LOGGER.debug("Filing indicators fetched in {}ms, received {} indicators", 
-            System.currentTimeMillis() - filingStart, 
-            filingIndicators != null ? filingIndicators.size() : 0);
-    } else {
-        LOGGER.debug("Skipping filing indicators - no items need them");
-    }
-    
-    // Get error flags in one batch (if needed)
-    if (!errorFlagItemIds.isEmpty()) {
-        LOGGER.debug("Fetching error flags for {} items", errorFlagItemIds.size());
-        long errorFlagStart = System.currentTimeMillis();
-        errorFlags = getXbrlErrorFlag(new ArrayList<>(errorFlagItemIds));
-        LOGGER.debug("Error flags fetched in {}ms, received {} flags", 
-            System.currentTimeMillis() - errorFlagStart,
-            errorFlags != null ? errorFlags.size() : 0);
-    } else {
-        LOGGER.debug("Skipping error flags - no items need them");
-    }
-    
-    // 3. Apply metadata to items in a single pass
-    LOGGER.debug("Applying metadata to XBRL items...");
-    int filingIndicatorsApplied = 0;
-    int errorFlagsApplied = 0;
-    
-    for (ScheduleDataItems item : items) {
-        if (item.getXbrl()) {
-            String itemId = String.valueOf(item.getFirmDataItemId());
-            
-            // Apply filing indicators if applicable
-            if ((Constants.SUBMITTED.equalsIgnoreCase(item.getCompletionStatus()) || 
-                Constants.COPY_CREATED.equalsIgnoreCase(item.getCompletionStatus())) && 
-                filingIndicators != null && filingIndicators.containsKey(itemId)) {
-                
-                item.setFilingIndicators(filingIndicators.get(itemId));
-                filingIndicatorsApplied++;
-            }
-            
-            // Apply error flags if applicable
-            if (!(Constants.NODATA.equalsIgnoreCase(item.getCompletionStatus()) || 
-                Constants.FAILED_VALIDATION.equalsIgnoreCase(item.getCompletionStatus())) &&
-                errorFlags != null && errorFlags.containsKey(itemId)) {
-                
-                item.setXbrlErrorFlag(errorFlags.get(itemId));
-                errorFlagsApplied++;
-            }
-        }
-    }
-    
-    // Log completion metrics
-    long duration = System.currentTimeMillis() - startTime;
-    LOGGER.info("Metadata population completed in {}ms: applied {} filing indicators and {} error flags",
-        duration, filingIndicatorsApplied, errorFlagsApplied);
-}
-```
-
-These methods can be directly copied and pasted into your `ScheduleDetailsServiceImpl` class. They maintain all the original functionality but process data more efficiently through batching.
