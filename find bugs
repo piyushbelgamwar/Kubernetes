@@ -1,5 +1,5 @@
-
 <FindBugsFilter>
+    <!-- Existing Performance Rules -->
     <Match><Bug category="PERFORMANCE" /></Match>
     <Match><Bug pattern="SBSC_USE_STRINGBUFFER_CONCATENATION" /></Match>
     <Match><Bug pattern="DMI_COLLECTION_OF_URLS" /></Match>
@@ -22,4 +22,18 @@
     <Match><Bug pattern="UUF_UNUSED_FIELD" /></Match>
     <Match><Bug pattern="SE_BAD_FIELD" /></Match>
     <Match><Bug pattern="DLS_DEAD_LOCAL_STORE" /></Match>
+
+    <!-- SQL/JDBC Concatenation Rules -->
+    <Match><Bug pattern="SQL_INJECTION_JDBC" /></Match>
+    <Match><Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" /></Match>
+    <Match><Bug pattern="SQL_INJECTION_JPA" /></Match>
+
+    <!-- N+1 Query Detection -->
+    <Match><Bug pattern="JPA_N_PLUS_ONE_QUERY" /></Match>
+
+    <!-- Placeholder for custom JSON & JDBC-batch checks -->
+    <!--
+      <Match><Bug pattern="CUSTOM_JSON_DESERIALIZATION_PERF" /></Match>
+      <Match><Bug pattern="CUSTOM_JDBC_BATCH_NOT_USED" /></Match>
+    -->
 </FindBugsFilter>
