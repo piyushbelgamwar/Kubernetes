@@ -80,3 +80,54 @@
         <Package name="~.*\.test\..*" />
     </Match>
 </FindBugsFilter>
+
+
+<FindBugsFilter>
+    <!-- CPU-intensive string operations -->
+    <Match>
+        <Bug pattern="SBSC_USE_STRINGBUFFER_CONCATENATION" />
+        <Bug pattern="IMA_INEFFICIENT_MEMBER_ACCESS" />
+        <Bug pattern="SBP_MAYBE_APPEND_TO_STRING" />
+    </Match>
+    
+    <!-- Inefficient collections usage -->
+    <Match>
+        <Bug pattern="WMI_WRONG_MAP_ITERATOR" />
+        <Bug pattern="DMI_COLLECTION_OF_URLS" />
+        <Bug pattern="URF_UNREAD_FIELD" />
+    </Match>
+    
+    <!-- CPU-intensive boxing/unboxing -->
+    <Match>
+        <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED" />
+        <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION" />
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
+    </Match>
+    
+    <!-- Inefficient method calls -->
+    <Match>
+        <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT" />
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+        <Bug pattern="ITA_INEFFICIENT_TO_ARRAY" />
+    </Match>
+    
+    <!-- Inefficient synchronization -->
+    <Match>
+        <Bug pattern="DC_DOUBLECHECK" />
+        <Bug pattern="IS2_INCONSISTENT_SYNC" />
+        <Bug pattern="MWN_MISMATCHED_WAIT" />
+    </Match>
+    
+    <!-- Inefficient exception handling -->
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Bug pattern="DE_MIGHT_IGNORE" />
+    </Match>
+    
+    <!-- Memory leaks that impact CPU -->
+    <Match>
+        <Bug pattern="UUF_UNUSED_FIELD" />
+        <Bug pattern="SE_BAD_FIELD" />
+        <Bug pattern="DLS_DEAD_LOCAL_STORE" />
+    </Match>
+</FindBugsFilter>
