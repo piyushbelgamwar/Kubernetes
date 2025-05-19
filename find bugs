@@ -1,133 +1,25 @@
-<build>
-    <plugins>
-        <!-- Existing plugins here -->
-        
-        <!-- SpotBugs Plugin for Static Analysis -->
-        <plugin>
-            <groupId>com.github.spotbugs</groupId>
-            <artifactId>spotbugs-maven-plugin</artifactId>
-            <version>4.5.0.0</version>
-            <configuration>
-                <effort>Max</effort>
-                <threshold>Low</threshold>
-                <failOnError>false</failOnError>
-                <includeFilterFile>${project.basedir}/spotbugs-include.xml</includeFilterFile>
-                <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
-                <plugins>
-                    <plugin>
-                        <groupId>com.h3xstream.findsecbugs</groupId>
-                        <artifactId>findsecbugs-plugin</artifactId>
-                        <version>1.11.0</version>
-                    </plugin>
-                </plugins>
-            </configuration>
-            <executions>
-                <execution>
-                    <goals>
-                        <goal>check</goal>
-                    </goals>
-                </execution>
-            </executions>
-        </plugin>
-    </plugins>
-</build>
 
 <FindBugsFilter>
-    <!-- Performance related bugs -->
-    <Match>
-        <Bug category="PERFORMANCE" />
-    </Match>
-    
-    <!-- Inefficient String concatenation -->
-    <Match>
-        <Bug pattern="SBSC_USE_STRINGBUFFER_CONCATENATION" />
-    </Match>
-    
-    <!-- Inefficient Collections usage -->
-    <Match>
-        <Bug pattern="DMI_COLLECTION_OF_URLS" />
-    </Match>
-    
-    <!-- Inefficient exception handling -->
-    <Match>
-        <Bug pattern="REC_CATCH_EXCEPTION" />
-    </Match>
-    
-    <!-- Boxing/unboxing issues -->
-    <Match>
-        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
-    </Match>
-    
-    <!-- Thread synchronization issues -->
-    <Match>
-        <Bug pattern="IS2_INCONSISTENT_SYNC" />
-    </Match>
-    
-    <!-- Inefficient resource usage -->
-    <Match>
-        <Bug pattern="OS_OPEN_STREAM" />
-    </Match>
-</FindBugsFilter>
-
-<FindBugsFilter>
-    <!-- Example: Exclude specific classes -->
-    <Match>
-        <Class name="~.*\.generated\..*" />
-    </Match>
-    
-    <!-- Example: Exclude specific directories -->
-    <Match>
-        <Package name="~.*\.test\..*" />
-    </Match>
-</FindBugsFilter>
-
-
-<FindBugsFilter>
-    <!-- CPU-intensive string operations -->
-    <Match>
-        <Bug pattern="SBSC_USE_STRINGBUFFER_CONCATENATION" />
-        <Bug pattern="IMA_INEFFICIENT_MEMBER_ACCESS" />
-        <Bug pattern="SBP_MAYBE_APPEND_TO_STRING" />
-    </Match>
-    
-    <!-- Inefficient collections usage -->
-    <Match>
-        <Bug pattern="WMI_WRONG_MAP_ITERATOR" />
-        <Bug pattern="DMI_COLLECTION_OF_URLS" />
-        <Bug pattern="URF_UNREAD_FIELD" />
-    </Match>
-    
-    <!-- CPU-intensive boxing/unboxing -->
-    <Match>
-        <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED" />
-        <Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION" />
-        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
-    </Match>
-    
-    <!-- Inefficient method calls -->
-    <Match>
-        <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT" />
-        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
-        <Bug pattern="ITA_INEFFICIENT_TO_ARRAY" />
-    </Match>
-    
-    <!-- Inefficient synchronization -->
-    <Match>
-        <Bug pattern="DC_DOUBLECHECK" />
-        <Bug pattern="IS2_INCONSISTENT_SYNC" />
-        <Bug pattern="MWN_MISMATCHED_WAIT" />
-    </Match>
-    
-    <!-- Inefficient exception handling -->
-    <Match>
-        <Bug pattern="REC_CATCH_EXCEPTION" />
-        <Bug pattern="DE_MIGHT_IGNORE" />
-    </Match>
-    
-    <!-- Memory leaks that impact CPU -->
-    <Match>
-        <Bug pattern="UUF_UNUSED_FIELD" />
-        <Bug pattern="SE_BAD_FIELD" />
-        <Bug pattern="DLS_DEAD_LOCAL_STORE" />
-    </Match>
+    <Match><Bug category="PERFORMANCE" /></Match>
+    <Match><Bug pattern="SBSC_USE_STRINGBUFFER_CONCATENATION" /></Match>
+    <Match><Bug pattern="DMI_COLLECTION_OF_URLS" /></Match>
+    <Match><Bug pattern="REC_CATCH_EXCEPTION" /></Match>
+    <Match><Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" /></Match>
+    <Match><Bug pattern="IS2_INCONSISTENT_SYNC" /></Match>
+    <Match><Bug pattern="OS_OPEN_STREAM" /></Match>
+    <Match><Bug pattern="IMA_INEFFICIENT_MEMBER_ACCESS" /></Match>
+    <Match><Bug pattern="SBP_MAYBE_APPEND_TO_STRING" /></Match>
+    <Match><Bug pattern="WMI_WRONG_MAP_ITERATOR" /></Match>
+    <Match><Bug pattern="URF_UNREAD_FIELD" /></Match>
+    <Match><Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED" /></Match>
+    <Match><Bug pattern="BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION" /></Match>
+    <Match><Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT" /></Match>
+    <Match><Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" /></Match>
+    <Match><Bug pattern="ITA_INEFFICIENT_TO_ARRAY" /></Match>
+    <Match><Bug pattern="DC_DOUBLECHECK" /></Match>
+    <Match><Bug pattern="MWN_MISMATCHED_WAIT" /></Match>
+    <Match><Bug pattern="DE_MIGHT_IGNORE" /></Match>
+    <Match><Bug pattern="UUF_UNUSED_FIELD" /></Match>
+    <Match><Bug pattern="SE_BAD_FIELD" /></Match>
+    <Match><Bug pattern="DLS_DEAD_LOCAL_STORE" /></Match>
 </FindBugsFilter>
