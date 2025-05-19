@@ -1,0 +1,82 @@
+<build>
+    <plugins>
+        <!-- Existing plugins here -->
+        
+        <!-- SpotBugs Plugin for Static Analysis -->
+        <plugin>
+            <groupId>com.github.spotbugs</groupId>
+            <artifactId>spotbugs-maven-plugin</artifactId>
+            <version>4.5.0.0</version>
+            <configuration>
+                <effort>Max</effort>
+                <threshold>Low</threshold>
+                <failOnError>false</failOnError>
+                <includeFilterFile>${project.basedir}/spotbugs-include.xml</includeFilterFile>
+                <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                <plugins>
+                    <plugin>
+                        <groupId>com.h3xstream.findsecbugs</groupId>
+                        <artifactId>findsecbugs-plugin</artifactId>
+                        <version>1.11.0</version>
+                    </plugin>
+                </plugins>
+            </configuration>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>check</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
+
+<FindBugsFilter>
+    <!-- Performance related bugs -->
+    <Match>
+        <Bug category="PERFORMANCE" />
+    </Match>
+    
+    <!-- Inefficient String concatenation -->
+    <Match>
+        <Bug pattern="SBSC_USE_STRINGBUFFER_CONCATENATION" />
+    </Match>
+    
+    <!-- Inefficient Collections usage -->
+    <Match>
+        <Bug pattern="DMI_COLLECTION_OF_URLS" />
+    </Match>
+    
+    <!-- Inefficient exception handling -->
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+    </Match>
+    
+    <!-- Boxing/unboxing issues -->
+    <Match>
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
+    </Match>
+    
+    <!-- Thread synchronization issues -->
+    <Match>
+        <Bug pattern="IS2_INCONSISTENT_SYNC" />
+    </Match>
+    
+    <!-- Inefficient resource usage -->
+    <Match>
+        <Bug pattern="OS_OPEN_STREAM" />
+    </Match>
+</FindBugsFilter>
+
+<FindBugsFilter>
+    <!-- Example: Exclude specific classes -->
+    <Match>
+        <Class name="~.*\.generated\..*" />
+    </Match>
+    
+    <!-- Example: Exclude specific directories -->
+    <Match>
+        <Package name="~.*\.test\..*" />
+    </Match>
+</FindBugsFilter>
